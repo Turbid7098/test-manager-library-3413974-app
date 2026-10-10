@@ -7,7 +7,17 @@ Este repositorio es el **frontend** de *Manager Library*, desarrollado en **Reac
 
 ## Estado del frontend
 
-La aplicación React + TypeScript ya incluye una pantalla responsive de inicio de sesión conectada a `POST /api/v1/auth/login` y una primera vista de resumen para las sesiones autenticadas. El JWT se mantiene solo en memoria; al recargar la página se solicita iniciar sesión de nuevo. Los módulos de catálogo, socios y préstamos se indican como próximos pasos y aún no hacen llamadas a endpoints de negocio.
+La aplicación React + TypeScript incluye inicio de sesión JWT y un dashboard conectado a los endpoints de negocio. El token se mantiene solo en memoria; al recargar la página se solicita iniciar sesión de nuevo.
+
+El dashboard ofrece:
+
+- Resumen con indicadores de catálogo, socios, préstamos activos y vencidos.
+- Búsqueda, alta, edición y baja de libros (administrador).
+- Búsqueda y registro de socios.
+- Registro de préstamos de hasta tres libros y devolución de ejemplares.
+- Consulta de líneas vencidas y reporte de títulos más prestados (administrador).
+
+La interfaz limita el acceso a reportes y a la gestión del catálogo al rol administrador. La validación de todo el flujo visual contra la API real sigue en curso.
 
 ## Ejecución local
 
