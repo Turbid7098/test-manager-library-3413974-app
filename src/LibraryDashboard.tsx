@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import {
   ApiError,
   createBook,
+  createLibrarian,
   createLoan,
   createMember,
   deleteBook,
@@ -11,7 +12,9 @@ import {
   getMembers,
   getMostBorrowed,
   getOverdueLoans,
+  removeBookCover,
   returnLoanItem,
+  uploadBookCover,
   updateBook,
   type Book,
   type Category,
@@ -22,7 +25,7 @@ import {
   type OverdueLoanItem,
 } from './api'
 
-type View = 'home' | 'books' | 'members' | 'loans' | 'overdue' | 'reports'
+type View = 'home' | 'books' | 'members' | 'loans' | 'overdue' | 'reports' | 'users'
 
 interface LibraryDashboardProps {
   token: string
@@ -37,6 +40,7 @@ const viewLabels: Record<View, string> = {
   loans: 'Préstamos',
   overdue: 'Vencidos',
   reports: 'Reportes',
+  users: 'Bibliotecarios',
 }
 
 const emptyBookForm = {
@@ -94,7 +98,9 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
   const [notice, setNotice] = useState('')
   const [bookEditor, setBookEditor] = useState<Book | null | false>(false)
   const [bookForm, setBookForm] = useState(emptyBookForm)
+  const [coverFile, setCoverFile] = useState<File | null>(null)
   const [memberForm, setMemberForm] = useState({ full_name: '', document_number: '' })
+  const [librarianForm, setLibrarianForm] = useState({ username: '', password: '' })
   const [loanMemberId, setLoanMemberId] = useState('')
   const [loanBookIds, setLoanBookIds] = useState<string[]>([])
   const [returningItemId, setReturningItemId] = useState('')
@@ -152,6 +158,9 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
           const report = await getMostBorrowed(token, reportFrom, reportTo)
           if (!active) return
           setReportRows(report.rows)
+        } else if (view === 'users' && !isAdmin) {
+          if (!active) return
+          setError('Solo el administrador puede gestionar bibliotecarios.')
         }
       } catch (cause) {
         if (active) setError(errorMessage(cause))
@@ -164,7 +173,7 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
     return () => {
       active = false
     }
-  }, [view, token, appliedQuery, reportFrom, reportTo, refreshVersion])
+  }, [view, token, appliedQuery, reportFrom, reportTo, refreshVersion, isAdmin])
 
   function selectView(nextView: View) {
     setView(nextView)
@@ -176,11 +185,13 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
 
   function openNewBook() {
     setBookForm({ ...emptyBookForm, category_id: categories[0]?.id ?? '' })
+    setCoverFile(null)
     setBookEditor(null)
     setError('')
   }
 
   function openEditBook(book: Book) {
+    setCoverFile(null)
     setBookForm({
       title: book.title,
       author: book.author,
@@ -204,14 +215,35 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
         category_id: bookForm.category_id,
         total_copies: Number(bookForm.total_copies),
       }
+      const isNewBook = bookEditor === null
+      let savedBook: Book
       if (bookEditor) {
-        await updateBook(token, bookEditor.id, details)
-        setNotice('Libro actualizado correctamente.')
+        savedBook = await updateBook(token, bookEditor.id, details)
       } else {
-        await createBook(token, { ...details, isbn: bookForm.isbn.trim() })
-        setNotice('Libro agregado al catálogo.')
+        savedBook = await createBook(token, { ...details, isbn: bookForm.isbn.trim() })
+        setBookEditor(savedBook)
       }
+      if (coverFile) await uploadBookCover(token, savedBook.id, coverFile)
+      setNotice(isNewBook ? 'Libro agregado al catálogo.' : 'Libro actualizado correctamente.')
       setBookEditor(false)
+      setCoverFile(null)
+      setRefreshVersion((version) => version + 1)
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleRemoveBookCover() {
+    if (!bookEditor) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      await removeBookCover(token, bookEditor.id)
+      setBookEditor({ ...bookEditor, cover_key: null })
+      setNotice('Portada retirada correctamente.')
       setRefreshVersion((version) => version + 1)
     } catch (cause) {
       setError(errorMessage(cause))
@@ -246,6 +278,25 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
       setMemberForm({ full_name: '', document_number: '' })
       setNotice('Socio registrado correctamente.')
       setRefreshVersion((version) => version + 1)
+    } catch (cause) {
+      setError(errorMessage(cause))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleLibrarianSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const librarian = await createLibrarian(token, {
+        username: librarianForm.username.trim(),
+        password: librarianForm.password,
+      })
+      setLibrarianForm({ username: '', password: '' })
+      setNotice(`Bibliotecario ${librarian.username} creado correctamente.`)
     } catch (cause) {
       setError(errorMessage(cause))
     } finally {
@@ -308,7 +359,7 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
         <span className="sidebar-caption">ESPACIO DE TRABAJO</span>
         <nav className="dashboard-nav" aria-label="Navegación principal">
           {(Object.keys(viewLabels) as View[])
-            .filter((item) => item !== 'reports' || isAdmin)
+            .filter((item) => (item !== 'reports' && item !== 'users') || isAdmin)
             .map((item) => (
               <button
                 aria-current={view === item ? 'page' : undefined}
@@ -318,7 +369,7 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
                 type="button"
               >
                 <span className="nav-emoji" aria-hidden="true">
-                  {{ home: '▦', books: '▤', members: '♙', loans: '↔', overdue: '◷', reports: '▥' }[item]}
+                  {{ home: '▦', books: '▤', members: '♙', loans: '↔', overdue: '◷', reports: '▥', users: '♙' }[item]}
                 </span>
                 <span>{viewLabels[item]}</span>
                 {item === 'overdue' && overdue.length > 0 && <span className="nav-count">{overdue.length}</span>}
@@ -431,6 +482,14 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
                   onToChange={setReportTo}
                 />
               )}
+              {view === 'users' && isAdmin && (
+                <LibrariansView
+                  form={librarianForm}
+                  saving={saving}
+                  onFormChange={setLibrarianForm}
+                  onSubmit={(event) => void handleLibrarianSubmit(event)}
+                />
+              )}
             </>
           )}
 
@@ -456,6 +515,12 @@ function LibraryDashboard({ token, role, onLogout }: LibraryDashboardProps) {
                 {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
               </select></label>
               <label>Ejemplares<input inputMode="numeric" max="10000" min="1" onChange={(event) => setBookForm({ ...bookForm, total_copies: event.target.value })} required type="number" value={bookForm.total_copies} /></label>
+              <label>Portada (JPG o PNG, hasta 2 MB)
+                <input accept="image/jpeg,image/png" onChange={(event) => setCoverFile(event.target.files?.[0] ?? null)} type="file" />
+              </label>
+              {bookEditor && bookEditor.cover_key && (
+                <button className="text-action text-danger" disabled={saving} onClick={() => void handleRemoveBookCover()} type="button">Quitar portada actual</button>
+              )}
               {error && <div className="dashboard-alert dashboard-alert-error" role="alert">{error}</div>}
               <div className="dialog-actions">
                 <button className="secondary-action" onClick={() => setBookEditor(false)} type="button">Cancelar</button>
@@ -477,6 +542,7 @@ function pageDescription(view: View): string {
     loans: 'Presta ejemplares disponibles y registra cada devolución.',
     overdue: 'Préstamos que requieren seguimiento por fecha de vencimiento.',
     reports: 'Consulta los títulos más prestados en un periodo.',
+    users: 'Crea cuentas de bibliotecario para el equipo de tu biblioteca.',
   }
   return descriptions[view]
 }
@@ -627,6 +693,50 @@ function MembersView({
         </form>
       </section>
     </div>
+  )
+}
+
+function LibrariansView({
+  form,
+  saving,
+  onFormChange,
+  onSubmit,
+}: {
+  form: { username: string; password: string }
+  saving: boolean
+  onFormChange: (form: { username: string; password: string }) => void
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+}) {
+  return (
+    <section className="workspace-card form-card librarian-form-card">
+      <span className="eyebrow eyebrow-purple">EQUIPO DE TRABAJO</span>
+      <h2>Crear bibliotecario</h2>
+      <p>La cuenta nueva tendrá permisos de operación, sin acceso a funciones administrativas.</p>
+      <form className="data-form" onSubmit={onSubmit}>
+        <label>Nombre de usuario
+          <input
+            autoComplete="username"
+            maxLength={120}
+            onChange={(event) => onFormChange({ ...form, username: event.target.value })}
+            required
+            value={form.username}
+          />
+        </label>
+        <label>Contraseña
+          <input
+            autoComplete="new-password"
+            maxLength={255}
+            onChange={(event) => onFormChange({ ...form, password: event.target.value })}
+            required
+            type="password"
+            value={form.password}
+          />
+        </label>
+        <button className="primary-action" disabled={saving} type="submit">
+          {saving ? 'Creando…' : 'Crear bibliotecario'}
+        </button>
+      </form>
+    </section>
   )
 }
 

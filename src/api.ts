@@ -28,6 +28,12 @@ export interface Member {
   active_loans?: number
 }
 
+export interface Librarian {
+  id: string
+  username: string
+  role: 'librarian'
+}
+
 export interface LoanItem {
   id: string
   book_id: string
@@ -107,7 +113,7 @@ interface RequestOptions {
 
 async function request<T>(path: string, token?: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
-  if (options.body !== undefined) {
+  if (options.body !== undefined && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json'
   }
   if (token) {
@@ -120,7 +126,11 @@ async function request<T>(path: string, token?: string, options: RequestOptions 
     response = await fetch(`${apiBaseUrl}/${path.replace(/^\/+/, '')}`, {
       method: options.method ?? 'GET',
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body: options.body === undefined
+        ? undefined
+        : options.body instanceof FormData
+          ? options.body
+          : JSON.stringify(options.body),
     })
   } catch {
     throw new ApiError('No pudimos conectar con el servidor. Comprueba que la API esté disponible e inténtalo de nuevo.', 0)
@@ -168,6 +178,16 @@ export function getCategories(token: string): Promise<ListResponse<Category>> {
   return request('categories', token)
 }
 
+export function createLibrarian(
+  token: string,
+  credentials: { username: string; password: string },
+): Promise<Librarian> {
+  return request('users', token, {
+    method: 'POST',
+    body: { ...credentials, role: 'librarian' },
+  })
+}
+
 export function getBooks(token: string, query = ''): Promise<Page<Book>> {
   const params = new URLSearchParams({ page: '1', size: '50' })
   if (query.trim()) params.set('q', query.trim())
@@ -179,6 +199,19 @@ export function createBook(
   book: { title: string; author: string; isbn: string; category_id: string; total_copies: number },
 ): Promise<Book> {
   return request('books', token, { method: 'POST', body: book })
+}
+
+export function uploadBookCover(token: string, id: string, file: File): Promise<Book> {
+  const form = new FormData()
+  form.set('file', file)
+  return request(`books/${encodeURIComponent(id)}/cover`, token, {
+    method: 'PUT',
+    body: form,
+  })
+}
+
+export function removeBookCover(token: string, id: string): Promise<void> {
+  return request<void>(`books/${encodeURIComponent(id)}/cover`, token, { method: 'DELETE' })
 }
 
 export function updateBook(
