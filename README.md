@@ -3,7 +3,28 @@
 > **Prueba técnica · Ficha ADSO 3413974**
 > Horario: de **9:15 a. m. a 3:00 p. m.** (15:00). Después, **feria de presentación** de cada proyecto.
 
-Este repositorio es el **frontend** de *Manager Library*, en **React**. **Empieza vacío a propósito**: se construye en el fork de cada aprendiz.
+Este repositorio es el **frontend** de *Manager Library*, desarrollado en **React + TypeScript** a partir del fork del aprendiz.
+
+## Estado del frontend
+
+La aplicación React + TypeScript ya incluye una pantalla responsive de inicio de sesión conectada a `POST /api/v1/auth/login` y una primera vista de resumen para las sesiones autenticadas. El JWT se mantiene solo en memoria; al recargar la página se solicita iniciar sesión de nuevo. Los módulos de catálogo, socios y préstamos se indican como próximos pasos y aún no hacen llamadas a endpoints de negocio.
+
+## Ejecución local
+
+Requisitos: Node.js 22 y la API Laravel disponible en `http://localhost:8000`.
+
+```powershell
+npm ci
+npm run dev
+```
+
+Vite sirve la aplicación en `http://localhost:5173`. Para usar otra URL de API, configura `VITE_API_URL` antes de iniciar Vite; el valor predeterminado es `http://localhost:8000/api/v1`.
+
+Para validar tipos y generar la compilación de producción:
+
+```powershell
+npm run build
+```
 
 ## Instrucciones
 
